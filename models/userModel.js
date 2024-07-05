@@ -8,9 +8,9 @@ const userSchema = new mongoose.Schema({
         required: [true, 'user must have a name'],
         validate: {
             validator: function (value) {
-                return validator.isLength(value, { min: 3, max: undefined }) && validator.isAlpha(value);
+                return validator.isLength(value, { min: 3, max: undefined })
             },
-            message: 'User name must contain min 3 letters and no special characters are allowed'
+            message: 'User name must contain min 3 letters'
         }
     },
     email: {
@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema({
     },
     password: {
         type: String,
-        required: [true, 'user must have a password'],
+        required: [true, 'user must have a password with length 8'],
         select: false,
         minlength: 8
     },
@@ -92,6 +92,16 @@ userSchema.pre('save', async function (next) {
     this.passwordChangedAt = Date.now() - 1000;
     next()
 })
+
+userSchema.methods.changePasswordAfter = function (JWTTIMESTAMP) {
+    if (this.passwordChangedAt) {
+        const changedTimeStamp = parseInt(this.passwordChangedAt.getTime() / 1000, 10);
+        return JWTTIMESTAMP < changedTimeStamp
+    }
+    return false;
+}
+
+
 
 const User = mongoose.model('User', userSchema)
 module.exports = User
