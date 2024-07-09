@@ -2,8 +2,7 @@ const express = require('express')
 const router = express.Router()
 const authController = require('../controllers/authController')
 
-router.route('/signUp')
-    .post(authController.signUp)
+router.post('signUp', authController.signUp)
 
 
 router.route('/verifyEmail')
@@ -13,10 +12,10 @@ router.route('/verifyEmail')
     )
 
 
-router.route('/login')
-    .post(
-        authController.login
-    )
+router.post('/login', authController.login)
+router.get('/logout', authController.protect, authController.logout)
+
+
 
 
 module.exports = router

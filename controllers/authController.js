@@ -1,5 +1,7 @@
 const mongoose = require('mongoose')
 const jwt = require('jsonwebtoken')
+const { promisify } = require('util')
+
 
 const User = require('../models/userModel');
 const catchAsync = require('../utils/catchAsync');
@@ -31,6 +33,8 @@ async function createAndSendToken(user, statusCode, res) {
 
     res.cookie('jwt', token, cookieOptions)
 
+    user.password = undefined
+
     res.status(statusCode).json({
         status: "success",
         data: {
@@ -53,7 +57,6 @@ exports.protect = catchAsync(async (req, res, next) => {
     }
 
     const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
-    console.log(decoded)
 
     const currentUser = await User.findById(decoded.id)
 
@@ -98,12 +101,16 @@ exports.signUp = catchAsync(async (req, res, next) => {
 
 exports.emailVerification = catchAsync(async (req, res, next) => {
     const verificationCode = req.body.verificationCode
-    const dataBaseEmailVerificationCode = (await User.findById(req.user.id)).emailVerificationCode
+    const user = await User.findById(req.user.id)
 
-    if (!verificationCode) return next(new AppError('Enter a valid verificationCode', 404))
+    if (!verificationCode) return next(new AppError('Enter a valid verification Code', 404))
 
-    if (verificationCode !== dataBaseEmailVerificationCode) {
-        return next(new AppError('Invalid verification code.Please Chekc your validaton code and try again.', 422))
+    if (verificationCode !== user.emailVerificationCode) {
+        return next(new AppError('Invalid verification code.Please Check your validaton code and try again.', 422))
+    }
+
+    if (Date.now() > user.emailVerificationCodeExp) {
+        return new AppError('Email verification code expires.Generate a new verification code', 400)
     }
 
     await User.findByIdAndUpdate(req.user.id, {
@@ -113,7 +120,8 @@ exports.emailVerification = catchAsync(async (req, res, next) => {
     })
 
     res.status(200).json({
-        status: 'suucess',
+        status: 'success',
+        messege: "Email verified successfully"
     })
 })
 
@@ -126,16 +134,36 @@ exports.login = catchAsync(async (req, res, next) => {
 
     const user = await User.findOne({ email }).select('+password')
 
-    if (!user.active) {
-        return next(new AppError('user no longer active', 400))
-    }
 
     if (!user || !await user.correctPassword(password, user.password)) {
-        return next(new AppError('Incorect email and password', 401))
+        return next(new AppError('Incorect email id and password', 401))
     }
-
-
-
 
     createAndSendToken(user, 200, res)
 })
+
+exports.logout = (req, res) => {
+    res.cookie('jwt', 'logged-out', {
+        expires: new Date(Date.now()),
+        httpOnly: true
+    })
+    res.status(200).json({ status: "success" })
+}
+
+exports.forgotPassword = catchAsync(async (req, res, next) => {
+    const user = await User.find({ email: req.body.email })
+    if (!user) {
+        return new AppError('No user found with this mail id.Provide a valid email id', 404)
+    }
+
+    const resetToken = user.createPasswordResetToken()
+    await user.save({ validateBeforeSave: false })
+
+
+
+
+
+
+
+})
+
