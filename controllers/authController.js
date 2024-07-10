@@ -6,7 +6,8 @@ const { promisify } = require('util')
 const User = require('../models/userModel');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
-const Email = require('../utils/email')
+const Email = require('../utils/email');
+const { unlink } = require('../app');
 
 function removeInvalidFields(excludedFields, reqData) {
     Object.keys(reqData).forEach(key => {
@@ -94,18 +95,22 @@ exports.signUp = catchAsync(async (req, res, next) => {
     }
 
     const newUser = await User.create({ ...req.body, ...additionalUserDetails })
-    // await new Email(newUser).sendEmailVerificationCode(additionalUserDetails.emailVerificationCode)
-
+    const emailVerificationURL = `${req.protocol}://${req.get('host')}/api/v1/user/verifyEmail/${additionalUserDetails.emailVerificationCode}`
+    await new Email(newUser, emailVerificationURL).sendEmailVerificationCode()
     createAndSendToken(newUser, 201, res)
 })
 
 exports.emailVerification = catchAsync(async (req, res, next) => {
-    const verificationCode = req.body.verificationCode
+    const verificationCode = req.params.token
     const user = await User.findById(req.user.id)
+
+    if (!user.emailVerificationCode) {
+        return next(new AppError('email already verified please login to continue', 400))
+    }
 
     if (!verificationCode) return next(new AppError('Enter a valid verification Code', 404))
 
-    if (verificationCode !== user.emailVerificationCode) {
+    if (Number(verificationCode) !== Number(user.emailVerificationCode)) {
         return next(new AppError('Invalid verification code.Please Check your validaton code and try again.', 422))
     }
 
@@ -114,9 +119,10 @@ exports.emailVerification = catchAsync(async (req, res, next) => {
     }
 
     await User.findByIdAndUpdate(req.user.id, {
-        emailVerificationCode: undefined,
-        emailVerificationCodeExp: undefined,
-        isEmailVerified: undefined
+        $unset: {
+            emailVerificationCode: 1,
+            emailVerificationCodeExp: 1,
+        }
     })
 
     res.status(200).json({
@@ -129,7 +135,7 @@ exports.login = catchAsync(async (req, res, next) => {
     const { email, password } = req.body
 
     if (!email || !password) {
-        return next(new AppError('Please enter a email and password', 400))
+        return next(new AppError('Please enter a valid email and password', 400))
     }
 
     const user = await User.findOne({ email }).select('+password')
@@ -147,11 +153,12 @@ exports.logout = (req, res) => {
         expires: new Date(Date.now()),
         httpOnly: true
     })
-    res.status(200).json({ status: "success" })
+    res.status(200).json()
 }
 
 exports.forgotPassword = catchAsync(async (req, res, next) => {
     const user = await User.find({ email: req.body.email })
+
     if (!user) {
         return new AppError('No user found with this mail id.Provide a valid email id', 404)
     }
@@ -159,11 +166,51 @@ exports.forgotPassword = catchAsync(async (req, res, next) => {
     const resetToken = user.createPasswordResetToken()
     await user.save({ validateBeforeSave: false })
 
+    try {
+        const resetURL = `${req.protocol}://${req.get('host')}/api/v1/users/resetPassword/${resetToken}`;
+        await new Email(user, resetURL).sendPasswordReset()
+        res.status(200).json({
+            status: "success",
+            message: "token sent to email!"
+        })
+    } catch (err) {
+        user.passwordResetToken = undefined
+        user.passwordResetExpires = undefined
+        await user.save({ validateBeforeSave: false })
+        return next(new AppError('There was an error in sending the email.Try again later!', 500))
+    }
+})
 
+exports.resetPasword = catchAsync(async (req, res, next) => {
+    const hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex')
 
+    const user = await User.findOne({
+        passwordResetToken: hashedToken,
+        passwordResetExpires: { $gt: Date.now() }
+    })
 
+    if (!user) {
+        return next(new AppError('Token is invalid or has expired', 400))
+    }
 
+    user.password = req.body.password
+    user.passwordResetToken = undefined
+    user.passwordResetExpires = undefined
+    await user.save()
 
+    createAndSendToken(user, 200, res)
+})
 
+exports.updatePassword = catchAsync(async (req, res, next) => {
+    const user = User.findById(req.user.id).select('+password')
+
+    if (!await user.correctPassword(req.body.passwordCurrent, user.password)) {
+        return next(new AppError('Your password is wrong', 401))
+    }
+
+    user.password = req.body.password
+    await user.save();
+
+    createAndSendToken(user, 201, res)
 })
 

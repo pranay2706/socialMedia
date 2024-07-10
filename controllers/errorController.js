@@ -9,6 +9,8 @@ const sendErrorDev = (err, res) => {
             stack: err.stack
         })
     } else {
+        err.message = err.message.split(':')[2]
+        console.log(err.message)
         res.status(500).json({
             status: "error",
             message: err.message,
@@ -18,7 +20,7 @@ const sendErrorDev = (err, res) => {
 
 module.exports = (err, req, res, next) => {
     err.statusCode = err.statusCode || 500
-    err.status = err.status || 'error'
+    err.status = err.status || 'error'   
     if (process.env.NODE_ENV === 'development') {
         sendErrorDev(err, res)
     }

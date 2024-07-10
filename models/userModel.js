@@ -25,7 +25,7 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: [true, 'user must have a password with length 8'],
         select: false,
-        minlength: 8
+        minlength: [8, 'password must be of length 8']
     },
     phoneNumber: {
         type: String,
@@ -62,14 +62,6 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: true,
         select: false
-    },
-    isEmailVerified: {
-        type: Boolean,
-        default: false
-    },
-    isPhoneNumberVerified: {
-        type: Boolean,
-        default: false
     },
     emailVerificationCode: Number,
     phoneNumberVerificationCode: Number,

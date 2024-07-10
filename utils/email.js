@@ -24,9 +24,8 @@ module.exports = class Email {
         });
     }
 
-    async send(subject, verificationCode) {
-        const html = `<h1>Welcome</h1> ${this.firstName} your email verification code is : ${verificationCode}`
-
+    async send(subject) {
+        const html = this.url
         const mailOptions = {
             from: this.from,
             to: this.to,
@@ -46,7 +45,7 @@ module.exports = class Email {
         this.send('Your password reset token(valid for only 10 min) ')
     }
 
-    async sendEmailVerificationCode(verificationCode) {
-        this.send('Your Email Verifiction Code(Valid for only 1 day)', verificationCode)
+    async sendEmailVerificationCode() {
+        this.send('Your Email Verifiction Code(Valid for only 1 day)')
     }
-}
+} 
